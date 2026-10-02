@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: enterprise-rag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rag_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag_password_secure}
+      POSTGRES_DB: ${POSTGRES_DB:-rag_enterprise}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rag_user} -d ${POSTGRES_DB:-rag_enterprise}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: enterprise-rag-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rag_user}:${POSTGRES_PASSWORD:-rag_password_secure}@postgres:5432/${POSTGRES_DB:-rag_enterprise}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-prod-secret-change-me-32-chars-long-key}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL_ID: ${GROQ_MODEL_ID:-openai/gpt-oss-120b}
+      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME:-all-MiniLM-L6-v2}
+      VECTOR_DB_DIR: /app/data/chroma
+      UPLOAD_DIR: /app/data/uploads
+    ports:
+      - "8500:8500"
+    volumes:
+      - backend_uploads:/app/data/uploads
+      - backend_chroma:/app/data/chroma
+
+volumes:
+  postgres_data:
+  backend_uploads:
+  backend_chroma:

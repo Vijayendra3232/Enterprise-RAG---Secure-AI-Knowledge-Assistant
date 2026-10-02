@@ -1,0 +1,25 @@
+# .dockerignore — Exclude local state, test data, and secrets from container image
+.git
+.gitignore
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
+data/
+tests/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+infra/
+.terraform/
+terraform.tfstate*
+*.tfstate
+*.tfstate.*
+*.log
+.DS_Store
+Thumbs.db

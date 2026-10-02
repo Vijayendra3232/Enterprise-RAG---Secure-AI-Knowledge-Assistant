@@ -1,0 +1,2 @@
+Enterprise RAG project workspace created from the uploaded ZIP.
+Original files are preserved. You can modify this folder in your IDE.

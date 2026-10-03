@@ -8,6 +8,7 @@ from app import config
 from app.storage.search.base import SearchStoreInterface
 from app.storage.search.opensearch_store import OpenSearchStore
 from app.storage.search.dev_adapters import DevelopmentHybridSearchStore
+from app.storage.search.mongo_store import MongoVectorStore
 
 _search_store_instance: Optional[SearchStoreInterface] = None
 
@@ -23,6 +24,15 @@ def get_search_store(
     global _search_store_instance
     resolved_type = (backend_type or getattr(config, "SEARCH_STORE_TYPE", "opensearch")).lower().strip()
     resolved_dim = dimension or getattr(config, "EMBEDDING_DIMENSION", 384)
+
+    if resolved_type in ["mongodb", "mongo", "mongodb_atlas"]:
+        return MongoVectorStore(
+            mongo_uri=getattr(config, "MONGODB_URI", ""),
+            db_name=getattr(config, "MONGODB_DATABASE", "enterprise_rag"),
+            collection_name=getattr(config, "MONGODB_COLLECTION", "chunk_vectors"),
+            index_name=getattr(config, "MONGODB_VECTOR_INDEX", "vector_index"),
+            configured_dimension=resolved_dim,
+        )
 
     if resolved_type == "opensearch":
         return OpenSearchStore(

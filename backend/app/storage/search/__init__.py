@@ -12,6 +12,7 @@ from app.storage.search.models import (
 from app.storage.search.base import SearchStoreInterface
 from app.storage.search.opensearch_store import OpenSearchStore, HttpOpenSearchTransport
 from app.storage.search.dev_adapters import DevelopmentHybridSearchStore
+from app.storage.search.mongo_store import MongoVectorStore
 from app.storage.search.factory import get_search_store, reset_search_store
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "OpenSearchStore",
     "HttpOpenSearchTransport",
     "DevelopmentHybridSearchStore",
+    "MongoVectorStore",
     "get_search_store",
     "reset_search_store",
 ]

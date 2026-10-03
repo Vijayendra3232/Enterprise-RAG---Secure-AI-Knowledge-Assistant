@@ -142,6 +142,10 @@ OPENSEARCH_INDEX_PREFIX = os.getenv("OPENSEARCH_INDEX_PREFIX", "enterprise_rag_c
 OPENSEARCH_TIMEOUT_SECONDS = int(os.getenv("OPENSEARCH_TIMEOUT_SECONDS", "10"))
 REBUILD_ROLLBACK_RETENTION_HOURS = int(os.getenv("REBUILD_ROLLBACK_RETENTION_HOURS", "24"))
 EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION", "384"))
+MONGODB_URI = os.getenv("MONGODB_URI", os.getenv("MONGO_URI", ""))
+MONGODB_DATABASE = os.getenv("MONGODB_DATABASE", "enterprise_rag")
+MONGODB_COLLECTION = os.getenv("MONGODB_COLLECTION", "chunk_vectors")
+MONGODB_VECTOR_INDEX = os.getenv("MONGODB_VECTOR_INDEX", "vector_index")
 
 # --- Asynchronous Task Execution & Worker Architecture ---
 WORKER_EMBEDDED = os.getenv("WORKER_EMBEDDED", "false").lower() == "true"  # DEV/TEST ONLY

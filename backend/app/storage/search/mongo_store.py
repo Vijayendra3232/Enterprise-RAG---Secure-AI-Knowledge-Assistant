@@ -76,8 +76,8 @@ class MongoVectorStore(SearchStoreInterface):
             import pymongo
             self._client = pymongo.MongoClient(
                 self.mongo_uri,
-                serverSelectionTimeoutMS=3000,
-                connectTimeoutMS=3000,
+                serverSelectionTimeoutMS=10000,
+                connectTimeoutMS=10000,
             )
             return self._client
         except Exception as exc:
@@ -483,7 +483,7 @@ class MongoVectorStore(SearchStoreInterface):
             )
 
         try:
-            client.admin.command("ping")
+            client[self.db_name].command("ping")
             latency = (time.perf_counter() - t0) * 1000.0
             return SearchHealthResponse(
                 status="HEALTHY",

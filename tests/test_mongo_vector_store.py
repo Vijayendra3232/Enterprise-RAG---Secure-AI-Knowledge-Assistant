@@ -113,7 +113,10 @@ def fake_mongo_store():
     fake_coll = FakeMongoCollection()
 
     mock_client = MagicMock()
-    mock_client.__getitem__.return_value.__getitem__.return_value = fake_coll
+    mock_db = MagicMock()
+    mock_db.__getitem__.return_value = fake_coll
+    mock_db.command.return_value = {"ok": 1}
+    mock_client.__getitem__.return_value = mock_db
     mock_client.admin.command.return_value = {"ok": 1}
     store._client = mock_client
     return store, fake_coll
@@ -133,6 +136,32 @@ def test_mongo_vector_store_initialization():
     assert store.index_name == "vector_index"
 
 
+def test_mongo_config_exposure():
+    from app import config
+    assert hasattr(config, "MONGODB_URI")
+    assert hasattr(config, "MONGODB_DATABASE")
+    assert hasattr(config, "MONGODB_COLLECTION")
+    assert hasattr(config, "MONGODB_VECTOR_INDEX")
+    assert config.MONGODB_DATABASE == "enterprise_rag"
+    assert config.MONGODB_COLLECTION == "chunk_vectors"
+    assert config.MONGODB_VECTOR_INDEX == "vector_index"
+
+
+def test_mongodb_srv_uri_and_timeout_configuration():
+    srv_uri = "mongodb+srv://user:pass@cluster0.example.mongodb.net/"
+    with patch("pymongo.MongoClient") as mock_mongo_cls:
+        mock_instance = MagicMock()
+        mock_mongo_cls.return_value = mock_instance
+        store = MongoVectorStore(mongo_uri=srv_uri)
+        client = store._get_client()
+        assert client is mock_instance
+        mock_mongo_cls.assert_called_once_with(
+            srv_uri,
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=10000,
+        )
+
+
 def test_health_check_healthy(fake_mongo_store):
     store, _ = fake_mongo_store
     health = store.health_check()
@@ -140,6 +169,9 @@ def test_health_check_healthy(fake_mongo_store):
     assert health.backend == "mongodb_atlas"
     assert health.configured_dimension == 384
     assert health.cluster_healthy is True
+    # Ensure command("ping") was executed against the configured database
+    db_mock = store._client[store.db_name]
+    db_mock.command.assert_called_with("ping")
 
 
 def test_health_check_unhealthy_when_offline():

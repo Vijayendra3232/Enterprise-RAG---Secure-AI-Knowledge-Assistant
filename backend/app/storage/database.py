@@ -18,7 +18,10 @@ if config.DATABASE_URL.startswith("sqlite"):
     if db_path and not db_path.startswith(":memory:"):
         db_dir = os.path.dirname(os.path.abspath(db_path))
         if db_dir:
-            os.makedirs(db_dir, exist_ok=True)
+            try:
+                os.makedirs(db_dir, exist_ok=True)
+            except Exception as e:
+                print(f"[Database] Warning: Could not create directory {db_dir}: {e}")
 
 # Build engine parameters based on dialect
 engine_kwargs = {}

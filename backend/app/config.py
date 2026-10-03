@@ -4,8 +4,10 @@ from dotenv import load_dotenv
 # Load environment variables from .env if present
 load_dotenv()
 
-# Base directory of the repository (two levels up from backend/app/)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Base directory of the repository
+_app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_parent_dir = os.path.dirname(_app_dir)
+BASE_DIR = _app_dir if _parent_dir == os.path.abspath(os.path.sep) else _parent_dir
 
 # --- LLM / Embedding ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -82,9 +84,18 @@ APP_ENV = os.getenv("APP_ENV", ENVIRONMENT).lower()
 DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "default_tenant")
 
 # --- Production Persistent Storage & Database Configuration ---
+_default_sqlite_path = os.getenv("SQLITE_DB_PATH")
+if not _default_sqlite_path:
+    if os.path.exists("/tmp/scratch"):
+        _default_sqlite_path = "/tmp/scratch/metadata.db"
+    elif os.path.exists("/tmp"):
+        _default_sqlite_path = "/tmp/metadata.db"
+    else:
+        _default_sqlite_path = "data/metadata.db"
+
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    f"sqlite:///{_resolve_path('data/metadata.db')}"
+    f"sqlite:///{_resolve_path(_default_sqlite_path)}"
 )
 DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "10"))
 DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "20"))

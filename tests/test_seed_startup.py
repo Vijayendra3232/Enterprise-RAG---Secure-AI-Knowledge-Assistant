@@ -158,4 +158,28 @@ def test_sql_user_repository_authentication(monkeypatch):
         seed_database()
 
 
+def test_embedding_model_singleton_caching_and_dimensions():
+    """Verify load_embedding_model caches model instances and produces 384d embeddings."""
+    from app.core.embeddings import load_embedding_model, get_embedding_dimension
+    from app import config
+
+    model_name = config.EMBEDDING_MODEL_NAME
+
+    model_1 = load_embedding_model(model_name)
+    model_2 = load_embedding_model(model_name)
+
+    # 1. Verify exact same instance is returned (singleton reference equality)
+    assert model_1 is model_2
+
+    # 2. Verify embedding dimension is 384
+    dim = get_embedding_dimension(model_1)
+    assert dim == 384
+
+    # 3. Verify sample embedding generation works and produces a 384-element vector
+    vec = model_1.embed_query("test semantic sentence for embedding verification")
+    assert isinstance(vec, list)
+    assert len(vec) == 384
+
+
+
 

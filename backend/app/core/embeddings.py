@@ -1,16 +1,28 @@
+import functools
 from langchain_huggingface import HuggingFaceEmbeddings
 
+
+@functools.lru_cache(maxsize=4)
 def load_embedding_model(embedding_model_name: str):
     """
-    Loads a pre-trained text embedding model.
+    Loads and caches a pre-trained text embedding model instance.
     Uses HuggingFaceEmbeddings (the maintained replacement for SentenceTransformerEmbeddings).
+    Optimized for 1-vCPU memory-constrained environments with singleton caching.
     """
+    try:
+        import torch
+        torch.set_num_threads(1)
+    except Exception:
+        pass
+
     embedding_model = HuggingFaceEmbeddings(
         model_name=embedding_model_name,
-        model_kwargs={"trust_remote_code": True}
+        model_kwargs={"trust_remote_code": True},
+        encode_kwargs={"batch_size": 16, "normalize_embeddings": True},
     )
-    print(f"Loaded text embedding model: {embedding_model_name}")
+    print(f"Loaded and cached text embedding model: {embedding_model_name}")
     return embedding_model
+
 
 
 def get_embedding_dimension(embedding_model_or_name) -> int:

@@ -2,6 +2,7 @@ fastapi==0.115.6
 uvicorn==0.34.0
 python-multipart==0.0.20
 python-dotenv==1.0.1
+PyJWT>=2.9.0
 psycopg2-binary>=2.9.9
 chromadb==1.5.9
 pandas>=2.2.3

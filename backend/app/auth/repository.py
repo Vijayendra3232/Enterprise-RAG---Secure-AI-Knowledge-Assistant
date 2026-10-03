@@ -1,17 +1,20 @@
 """
-repository.py — User repository abstraction and in-memory persistence implementation.
+repository.py — User repository abstraction, database-backed SQL persistence, and in-memory fallback implementations.
 """
 
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict
 from app.auth.models import User, UserInDB
 from app.auth.password import hash_password
+from app.storage.database import SessionLocal
+from app.storage.models import User as DBUser
+from app import config
 
 
 class UserRepositoryInterface(ABC):
     """
     Abstract repository interface for user identity management.
-    Designed for seamless future migration to PostgreSQL / SQLAlchemy.
+    Designed for seamless PostgreSQL / SQLAlchemy user persistence.
     """
     @abstractmethod
     def get_by_id(self, user_id: str) -> Optional[UserInDB]:
@@ -28,6 +31,144 @@ class UserRepositoryInterface(ABC):
     @abstractmethod
     def list_by_tenant(self, tenant_id: str) -> List[User]:
         pass
+
+
+class _UsersByIdDict(dict):
+    def __init__(self, repo: "SQLUserRepository"):
+        super().__init__()
+        self.repo = repo
+
+    def __setitem__(self, key, value: UserInDB):
+        super().__setitem__(key, value)
+        try:
+            self.repo.create(value)
+        except ValueError:
+            pass
+
+    def get(self, key, default=None):
+        user = self.repo.get_by_id(key)
+        if user:
+            return user
+        return super().get(key, default)
+
+
+class _UsersByEmailDict(dict):
+    def __init__(self, repo: "SQLUserRepository"):
+        super().__init__()
+        self.repo = repo
+
+    def __setitem__(self, key, value: UserInDB):
+        super().__setitem__(key.lower(), value)
+        try:
+            self.repo.create(value)
+        except ValueError:
+            pass
+
+    def get(self, key, default=None):
+        user = self.repo.get_by_email(key)
+        if user:
+            return user
+        return super().get(key.lower() if isinstance(key, str) else key, default)
+
+
+class SQLUserRepository(UserRepositoryInterface):
+    """
+    Authoritative database-backed user repository using SQLAlchemy.
+    Reads and updates user identity records from PostgreSQL / SQLite metadata database ('users' table).
+    """
+    def __init__(self, session_factory=SessionLocal):
+        self.session_factory = session_factory
+
+    @property
+    def _users_by_id(self):
+        if not hasattr(self, "_legacy_users_by_id"):
+            self._legacy_users_by_id = _UsersByIdDict(self)
+        return self._legacy_users_by_id
+
+    @property
+    def _users_by_email(self):
+        if not hasattr(self, "_legacy_users_by_email"):
+            self._legacy_users_by_email = _UsersByEmailDict(self)
+        return self._legacy_users_by_email
+
+
+
+    def _to_user_in_db(self, db_user: DBUser) -> UserInDB:
+        return UserInDB(
+            user_id=db_user.user_id,
+            tenant_id=db_user.tenant_id,
+            email=db_user.email,
+            name=db_user.name,
+            role=db_user.role,
+            is_active=db_user.is_active,
+            groups=db_user.groups or [],
+            hashed_password=db_user.password_hash,
+        )
+
+    def get_by_id(self, user_id: str) -> Optional[UserInDB]:
+        db = self.session_factory()
+        try:
+            db_user = db.query(DBUser).filter(DBUser.user_id == user_id).first()
+            return self._to_user_in_db(db_user) if db_user else None
+        finally:
+            db.close()
+
+    def get_by_email(self, email: str) -> Optional[UserInDB]:
+        db = self.session_factory()
+        try:
+            db_user = db.query(DBUser).filter(DBUser.email.ilike(email.strip())).first()
+            return self._to_user_in_db(db_user) if db_user else None
+        finally:
+            db.close()
+
+    def create(self, user: UserInDB) -> UserInDB:
+        db = self.session_factory()
+        try:
+            existing_id = db.query(DBUser).filter(DBUser.user_id == user.user_id).first()
+            if existing_id:
+                raise ValueError(f"User with ID '{user.user_id}' already exists.")
+            existing_email = db.query(DBUser).filter(DBUser.email.ilike(user.email.strip())).first()
+            if existing_email:
+                raise ValueError(f"User with email '{user.email}' already exists.")
+
+            db_user = DBUser(
+                user_id=user.user_id,
+                tenant_id=user.tenant_id,
+                email=user.email,
+                name=user.name,
+                password_hash=user.hashed_password,
+                role=user.role,
+                is_active=user.is_active,
+                groups=user.groups or [],
+            )
+            db.add(db_user)
+            db.commit()
+            db.refresh(db_user)
+            return self._to_user_in_db(db_user)
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def list_by_tenant(self, tenant_id: str) -> List[User]:
+        db = self.session_factory()
+        try:
+            db_users = db.query(DBUser).filter(DBUser.tenant_id == tenant_id).all()
+            return [
+                User(
+                    user_id=u.user_id,
+                    tenant_id=u.tenant_id,
+                    email=u.email,
+                    name=u.name,
+                    role=u.role,
+                    is_active=u.is_active,
+                    groups=u.groups or [],
+                )
+                for u in db_users
+            ]
+        finally:
+            db.close()
 
 
 class InMemoryUserRepository(UserRepositoryInterface):
@@ -152,8 +293,32 @@ class InMemoryUserRepository(UserRepositoryInterface):
         ]
 
 
-# Singleton instance
-_user_repository = InMemoryUserRepository()
+# Singleton instances
+_in_memory_repository = InMemoryUserRepository()
+_sql_repository = SQLUserRepository()
+_user_repository_override: Optional[UserRepositoryInterface] = None
+
+
+def set_user_repository(repo: Optional[UserRepositoryInterface]) -> None:
+    """
+    Override active user repository (useful for testing).
+    """
+    global _user_repository_override
+    _user_repository_override = repo
+
 
 def get_user_repository() -> UserRepositoryInterface:
-    return _user_repository
+    """
+    Returns the authoritative user repository.
+    By default (or when config.USER_REPOSITORY_TYPE == 'sql'), returns SQLUserRepository.
+    When configured to 'in_memory' or 'memory', returns InMemoryUserRepository.
+    """
+    global _user_repository_override
+    if _user_repository_override is not None:
+        return _user_repository_override
+
+    repo_type = getattr(config, "USER_REPOSITORY_TYPE", "sql").lower()
+    if repo_type in ("in_memory", "memory"):
+        return _in_memory_repository
+    return _sql_repository
+

@@ -168,6 +168,16 @@ def test_api_unauthorized_access():
 
 
 def test_admin_user_creation_endpoint():
+    # Clean up any leftover records from prior test runs
+    from app.storage.database import SessionLocal
+    from app.storage.models import User as DBUser
+    db = SessionLocal()
+    try:
+        db.query(DBUser).filter(DBUser.user_id.in_(["api_created_user", "hacker_user"])).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
     # Admin login
     admin_login = client.post("/auth/login", json={
         "email": "admin@companya.com",
@@ -186,6 +196,7 @@ def test_admin_user_creation_endpoint():
         "password": "securepassword123"
     }, headers=admin_headers)
     assert create_resp.status_code == 201
+
     assert create_resp.json()["user_id"] == "api_created_user"
 
     # Regular user attempting to create user should be forbidden (HTTP 403)

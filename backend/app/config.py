@@ -83,6 +83,8 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 APP_ENV = os.getenv("APP_ENV", ENVIRONMENT).lower()
 DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "default_tenant")
 AUTO_SEED_DATA = os.getenv("AUTO_SEED_DATA", "false").lower() == "true"
+USER_REPOSITORY_TYPE = os.getenv("USER_REPOSITORY_TYPE", "sql").lower()
+
 
 
 # --- Production Persistent Storage & Database Configuration ---

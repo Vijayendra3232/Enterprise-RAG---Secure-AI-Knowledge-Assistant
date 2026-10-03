@@ -42,16 +42,21 @@ def test_seed_database_execution_and_idempotency():
 def test_seed_database_custom_env_passwords(monkeypatch):
     """Verify seed_database uses custom password environment variables."""
     monkeypatch.setenv("DEMO_ADMIN_PASSWORD", "custom_admin_pass_99")
-    seed_database()
-
-    db = SessionLocal()
     try:
-        from app.auth.password import verify_password
-        admin_user = db.query(DBUser).filter(DBUser.user_id == "admin_a").first()
-        assert admin_user is not None
-        assert verify_password("custom_admin_pass_99", admin_user.password_hash)
+        seed_database()
+
+        db = SessionLocal()
+        try:
+            from app.auth.password import verify_password
+            admin_user = db.query(DBUser).filter(DBUser.user_id == "admin_a").first()
+            assert admin_user is not None
+            assert verify_password("custom_admin_pass_99", admin_user.password_hash)
+        finally:
+            db.close()
     finally:
-        db.close()
+        monkeypatch.delenv("DEMO_ADMIN_PASSWORD", raising=False)
+        seed_database()
+
 
 
 import asyncio
@@ -91,4 +96,66 @@ def test_lifespan_startup_seeding_error_resilience(monkeypatch):
                 pass  # Should reach here without raising exception
 
     asyncio.run(_test())
+
+
+def test_production_repository_selection_uses_sql_user_repository(monkeypatch):
+    """Verify that get_user_repository returns SQLUserRepository by default in production."""
+    from app import config
+    from app.auth.repository import get_user_repository, SQLUserRepository, set_user_repository
+
+    set_user_repository(None)  # Reset any test override
+    monkeypatch.setattr(config, "USER_REPOSITORY_TYPE", "sql")
+
+    repo = get_user_repository()
+    assert isinstance(repo, SQLUserRepository)
+
+
+def test_sql_user_repository_authentication(monkeypatch):
+    """Verify AuthService authenticates seeded database users using custom environment passwords."""
+    from app import config
+    from app.auth.service import AuthService
+    from app.auth.repository import SQLUserRepository, set_user_repository
+
+    set_user_repository(None)
+    monkeypatch.setattr(config, "USER_REPOSITORY_TYPE", "sql")
+    monkeypatch.setenv("DEMO_ADMIN_PASSWORD", "custom_sql_admin_pass_123")
+
+    try:
+        # Seed database with custom admin password
+        seed_database()
+
+        service = AuthService(repository=SQLUserRepository())
+
+        # 1. Seeded DB User authenticates successfully
+        user, err = service.authenticate_user("admin@companya.com", "custom_sql_admin_pass_123")
+        assert err is None
+        assert user is not None
+        assert user.user_id == "admin_a"
+        assert user.role == "ADMIN"
+
+        # 2. Issue token for authenticated user
+        token = service.issue_token(user)
+        assert token.access_token is not None
+        assert token.token_type == "bearer"
+
+        # 3. Wrong password returns 401 / Invalid
+        user_wrong, err_wrong = service.authenticate_user("admin@companya.com", "wrong_password_99")
+        assert user_wrong is None
+        assert "Invalid" in err_wrong
+
+        # 4. Inactive user returns 401 / inactive error
+        user_inact, err_inact = service.authenticate_user("inactive@companya.com", "inactive123")
+        assert user_inact is None
+        assert "inactive" in err_inact.lower()
+
+        # 5. Unknown user returns 401 / Invalid error
+        user_unk, err_unk = service.authenticate_user("unknown@companya.com", "somepassword")
+        assert user_unk is None
+        assert "Invalid" in err_unk
+    finally:
+        # Restore default database seed users for subsequent test files
+        monkeypatch.delenv("DEMO_ADMIN_PASSWORD", raising=False)
+        seed_database()
+
+
 

@@ -16,7 +16,12 @@ class AuthService:
     Central service for user authentication and token issuance.
     """
     def __init__(self, repository: Optional[UserRepositoryInterface] = None):
-        self.repository = repository or get_user_repository()
+        self._repository_override = repository
+
+    @property
+    def repository(self) -> UserRepositoryInterface:
+        return self._repository_override or get_user_repository()
+
 
     def authenticate_user(self, email: str, password: str, request_id: Optional[str] = None) -> Tuple[Optional[User], Optional[str]]:
         """

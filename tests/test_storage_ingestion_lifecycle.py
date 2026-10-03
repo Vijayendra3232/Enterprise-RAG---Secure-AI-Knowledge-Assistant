@@ -64,15 +64,22 @@ def lifecycle_client():
     db.commit()
     db.close()
 
+    from app.storage.search.dev_adapters import DevelopmentHybridSearchStore
+
     mock_rag = MagicMock()
     mock_rag.vector_db.vectordb.add_documents.return_value = ["chunk_1"]
     mock_rag.vector_db.vectordb.delete.return_value = None
     mock_rag.retrieval_pipeline.rebuild_bm25.return_value = None
     app.state.rag_service = mock_rag
+    app.state.search_store = DevelopmentHybridSearchStore(vector_db=mock_rag.vector_db)
 
     client = TestClient(app)
     yield client, TestingSession
     app.dependency_overrides.clear()
+    if hasattr(app.state, "rag_service"):
+        delattr(app.state, "rag_service")
+    if hasattr(app.state, "search_store"):
+        delattr(app.state, "search_store")
 
 
 def test_successful_ingestion_lifecycle(lifecycle_client):

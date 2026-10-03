@@ -194,6 +194,8 @@ class DocumentIngestHandler(TaskHandler):
                 # Generate embeddings if needed
                 rag_service = context.rag_service
                 embedder = rag_service.embeddings if (rag_service and hasattr(rag_service, "embeddings")) else None
+                if hasattr(search_store, "vector_db") and getattr(search_store, "vector_db", None) is None and rag_service and hasattr(rag_service, "vector_db"):
+                    search_store.vector_db = rag_service.vector_db
                 
                 chunk_payloads = []
                 for idx, c in enumerate(chunks):
@@ -219,22 +221,7 @@ class DocumentIngestHandler(TaskHandler):
                 logger.error(f"[IngestHandler] OpenSearch indexing failed on doc {document_id}: {exc}")
                 raise RetryableTaskError(f"Search store indexing failure: {exc}") from exc
 
-        # Legacy vector DB fallback for in-memory development mode if configured
-        if context.rag_service and hasattr(context.rag_service, "vector_db"):
-            try:
-                rag_service = context.rag_service
-                if hasattr(rag_service.vector_db, "vectordb"):
-                    try:
-                        rag_service.vector_db.vectordb.delete(where={"document_id": document_id})
-                    except Exception:
-                        pass
-                    rag_service.vector_db.vectordb.add_documents(chunks)
-                rag_service.retrieval_pipeline.rebuild_bm25()
-            except Exception as exc:
-                doc_repo.update_status(document_id, status="FAILED", error_message=str(exc))
-                context.db.commit()
-                logger.error(f"[IngestHandler] Legacy vector DB sync error: {exc}")
-                raise RetryableTaskError(f"Legacy vector DB sync failure: {exc}") from exc
+
 
         # ── 7. Mark Status INDEXED & Log Audit Event ────────────────────────
         doc_repo.update_status(document_id, status="INDEXED", indexed_at=datetime.now(timezone.utc))

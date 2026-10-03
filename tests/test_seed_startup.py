@@ -181,5 +181,87 @@ def test_embedding_model_singleton_caching_and_dimensions():
     assert len(vec) == 384
 
 
+def test_single_vector_indexing_invocation_during_ingestion():
+    """Verify DocumentIngestHandler calls search store index_chunks exactly once."""
+    from unittest.mock import MagicMock, patch
+    from app.tasks.handlers.ingestion import DocumentIngestHandler
+    from app.tasks.handlers.base import WorkerContext
+    from app.storage.models.task import Task
+    from app.storage.database import SessionLocal
+    from app.storage.models import Document as DBDocument, Tenant
+
+    # Create dummy database session
+    db = SessionLocal()
+    try:
+        # Create test tenant & document
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == "company_a").first()
+        if not tenant:
+            db.add(Tenant(tenant_id="company_a", name="Company A"))
+            db.commit()
+
+        doc_id = "test_single_index_doc_1"
+        db_doc = db.query(DBDocument).filter(DBDocument.document_id == doc_id).first()
+        if not db_doc:
+            db_doc = DBDocument(
+                document_id=doc_id,
+                tenant_id="company_a",
+                owner_id="admin_a",
+                filename="test.txt",
+                mime_type="text/plain",
+                size_bytes=100,
+                content_hash="dummyhash123",
+                access_level="PRIVATE",
+                status="PENDING",
+                version=1,
+            )
+            db.add(db_doc)
+            db.commit()
+        else:
+            db_doc.status = "PENDING"
+            db_doc.version = 1
+            db.commit()
+
+        # Mock search store & blob storage
+        mock_search_store = MagicMock()
+        mock_blob_storage = MagicMock()
+        mock_blob_storage.download_verified.return_value = b"Hello world test content for ingestion"
+
+        task = Task(
+            id="test_task_101",
+            tenant_id="company_a",
+            task_type="DOCUMENT_INGEST",
+            payload={
+                "document_id": doc_id,
+                "document_version": 1,
+                "storage_path": "dummy_path.txt",
+                "owner_id": "admin_a",
+                "access_level": "PRIVATE",
+            },
+        )
+
+        context = WorkerContext(
+            db=db,
+            search_store=mock_search_store,
+            blob_storage=mock_blob_storage,
+            secret_provider=MagicMock(),
+            rag_service=MagicMock(),
+            worker_id="test_worker_1",
+        )
+
+        handler = DocumentIngestHandler()
+        with patch("app.tasks.handlers.ingestion.ingest_document") as mock_ingest:
+            from langchain_core.documents import Document as LCDoc
+            mock_ingest.return_value = [LCDoc(page_content="Hello world test content", metadata={})]
+
+            result = handler.handle(task, context)
+
+            # Assert search_store.index_chunks was called EXACTLY ONCE
+            assert mock_search_store.index_chunks.call_count == 1
+            assert result["status"] == "INDEXED"
+    finally:
+        db.close()
+
+
+
 
 

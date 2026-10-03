@@ -334,6 +334,7 @@ def test_stale_task_recovery_after_simulated_worker_crash(test_db):
         task_type=TaskType.DOCUMENT_INGEST.value,
         status="RUNNING",
         started_at=crashed_time,
+        updated_at=crashed_time,
         worker_id="crashed-worker-99",
         attempt_count=1,
         max_attempts=3,

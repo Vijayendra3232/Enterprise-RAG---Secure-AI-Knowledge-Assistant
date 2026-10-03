@@ -220,11 +220,15 @@ class SQLTaskRepository:
         now = datetime.now(timezone.utc)
         stale_cutoff = now - timedelta(seconds=stale_threshold_seconds)
 
+        from sqlalchemy import or_, and_
         stale_tasks = (
             self.db.query(Task)
             .filter(
                 Task.status == "RUNNING",
-                Task.started_at < stale_cutoff,
+                or_(
+                    and_(Task.updated_at != None, Task.updated_at < stale_cutoff),
+                    and_(Task.updated_at == None, Task.started_at < stale_cutoff),
+                ),
             )
             .all()
         )

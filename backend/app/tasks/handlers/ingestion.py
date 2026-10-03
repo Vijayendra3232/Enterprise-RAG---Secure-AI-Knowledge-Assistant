@@ -197,12 +197,19 @@ class DocumentIngestHandler(TaskHandler):
                 if hasattr(search_store, "vector_db") and getattr(search_store, "vector_db", None) is None and rag_service and hasattr(rag_service, "vector_db"):
                     search_store.vector_db = rag_service.vector_db
                 
+                # Batch generate embeddings across all chunks at once
+                embeddings_list = []
+                if embedder and chunks:
+                    texts = [c.page_content for c in chunks]
+                    if hasattr(embedder, "embed_documents"):
+                        embeddings_list = embedder.embed_documents(texts)
+                    else:
+                        embeddings_list = [embedder.embed_query(t) for t in texts]
+
                 chunk_payloads = []
                 for idx, c in enumerate(chunks):
-                    vec = None
-                    if embedder:
-                        vec = embedder.embed_query(c.page_content)
-                    
+                    vec = embeddings_list[idx] if idx < len(embeddings_list) else None
+
                     actual_chunk_id = f"{document_id}_{idx}"
                     chunk_payloads.append(
                         ChunkPayload(

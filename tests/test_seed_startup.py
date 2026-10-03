@@ -181,6 +181,23 @@ def test_embedding_model_singleton_caching_and_dimensions():
     assert len(vec) == 384
 
 
+def test_embedding_runtime_thread_constraints():
+    """Verify PyTorch and CPU threading environment variables are configured for single-thread execution."""
+    import os
+    import torch
+    from app.core.embeddings import load_embedding_model
+    from app import config
+
+    assert os.environ.get("OMP_NUM_THREADS") == "1"
+    assert os.environ.get("MKL_NUM_THREADS") == "1"
+    assert os.environ.get("OPENBLAS_NUM_THREADS", "1") == "1"
+    assert os.environ.get("TOKENIZERS_PARALLELISM") == "false"
+    assert torch.get_num_threads() == 1
+
+    model = load_embedding_model(config.EMBEDDING_MODEL_NAME)
+    assert model is not None
+
+
 def test_single_vector_indexing_invocation_during_ingestion():
     """Verify DocumentIngestHandler calls search store index_chunks exactly once."""
     from unittest.mock import MagicMock, patch

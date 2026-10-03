@@ -15,6 +15,12 @@ from app.storage.database import init_db
 # Load environment variables
 load_dotenv()
 
+# Constrain PyTorch / OpenMP / MKL / Tokenizers CPU threading limits early for 1-vCPU environments
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize metadata database tables

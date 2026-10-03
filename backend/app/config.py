@@ -4,6 +4,12 @@ from dotenv import load_dotenv
 # Load environment variables from .env if present
 load_dotenv()
 
+# Constrain PyTorch / OpenMP / MKL / Tokenizers CPU threading limits early for 1-vCPU environments
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 # Base directory of the repository
 _app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _parent_dir = os.path.dirname(_app_dir)

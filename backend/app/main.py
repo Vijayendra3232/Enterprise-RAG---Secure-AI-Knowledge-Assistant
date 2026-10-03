@@ -23,6 +23,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[Main] Database initialization warning: {e}")
 
+    # Auto-seed database if AUTO_SEED_DATA is enabled
+    if getattr(config, "AUTO_SEED_DATA", False):
+        try:
+            print("[Lifespan] AUTO_SEED_DATA is enabled. Seeding initial database records...")
+            try:
+                from scripts.seed_dev import seed_database
+            except ImportError:
+                from backend.scripts.seed_dev import seed_database
+            seed_database()
+        except Exception as e:
+            print(f"[Lifespan] Database seeding warning: {e}")
+
+
     # Initialize provider-agnostic search store (OpenSearch or Dev Adapter)
     try:
         from app.storage.search.factory import get_search_store

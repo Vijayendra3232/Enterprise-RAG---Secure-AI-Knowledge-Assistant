@@ -82,6 +82,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 APP_ENV = os.getenv("APP_ENV", ENVIRONMENT).lower()
 DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "default_tenant")
+AUTO_SEED_DATA = os.getenv("AUTO_SEED_DATA", "false").lower() == "true"
+
 
 # --- Production Persistent Storage & Database Configuration ---
 _default_sqlite_path = os.getenv("SQLITE_DB_PATH")

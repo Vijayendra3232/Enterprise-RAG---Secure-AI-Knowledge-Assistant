@@ -37,7 +37,12 @@ def seed_database():
                 print(f"  * Tenant already exists: {t.tenant_id}")
         db.flush()
 
-        # 2. Seed Users
+        # 2. Seed Users (passwords supplied via environment variables with test fallbacks)
+        admin_pw = os.getenv("DEMO_ADMIN_PASSWORD", "admin123")
+        manager_pw = os.getenv("DEMO_MANAGER_PASSWORD", "manager123")
+        user_pw = os.getenv("DEMO_USER_PASSWORD", "password123")
+        viewer_pw = os.getenv("DEMO_VIEWER_PASSWORD", "viewer123")
+
         users = [
             DBUser(
                 user_id="admin_a",
@@ -47,7 +52,7 @@ def seed_database():
                 role="ADMIN",
                 is_active=True,
                 groups=["executives", "admins"],
-                password_hash=hash_password("admin123"),
+                password_hash=hash_password(admin_pw),
             ),
             DBUser(
                 user_id="manager_a",
@@ -57,7 +62,7 @@ def seed_database():
                 role="MANAGER",
                 is_active=True,
                 groups=["management"],
-                password_hash=hash_password("manager123"),
+                password_hash=hash_password(manager_pw),
             ),
             DBUser(
                 user_id="user_a",
@@ -67,7 +72,7 @@ def seed_database():
                 role="ENGINEERING",
                 is_active=True,
                 groups=["engineering", "dev"],
-                password_hash=hash_password("password123"),
+                password_hash=hash_password(user_pw),
             ),
             DBUser(
                 user_id="user_b",
@@ -77,7 +82,7 @@ def seed_database():
                 role="FINANCE",
                 is_active=True,
                 groups=["finance", "accounting"],
-                password_hash=hash_password("password123"),
+                password_hash=hash_password(user_pw),
             ),
             DBUser(
                 user_id="viewer_a",
@@ -87,7 +92,7 @@ def seed_database():
                 role="VIEWER",
                 is_active=True,
                 groups=["guests"],
-                password_hash=hash_password("viewer123"),
+                password_hash=hash_password(viewer_pw),
             ),
             DBUser(
                 user_id="admin_b",
@@ -97,7 +102,7 @@ def seed_database():
                 role="ADMIN",
                 is_active=True,
                 groups=["admins"],
-                password_hash=hash_password("admin123"),
+                password_hash=hash_password(admin_pw),
             ),
             DBUser(
                 user_id="user_c",
@@ -107,7 +112,7 @@ def seed_database():
                 role="ENGINEERING",
                 is_active=True,
                 groups=["engineering"],
-                password_hash=hash_password("password123"),
+                password_hash=hash_password(user_pw),
             ),
             DBUser(
                 user_id="inactive_user",

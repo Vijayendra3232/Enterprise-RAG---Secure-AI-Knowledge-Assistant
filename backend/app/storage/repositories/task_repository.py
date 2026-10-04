@@ -66,6 +66,9 @@ class SQLTaskRepository:
             .first()
         )
 
+    # Alias for contract compatibility
+    get_by_id = get_by_id_and_tenant
+
     def list_by_tenant(
         self,
         tenant_id: str,

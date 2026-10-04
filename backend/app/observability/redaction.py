@@ -104,16 +104,22 @@ class SafeIdentityHasher:
     def __repr__(self) -> str:
         return f"<SafeIdentityHasher version={self.version}>"
 
-    def hash_identifier(self_or_cls, raw_id: Optional[str], version: Optional[str] = None) -> str:
+    @classmethod
+    def hash_identifier(cls, raw_id: Optional[str], version: Optional[str] = None, secret_provider: Optional[Any] = None) -> str:
         if not raw_id:
             return ""
 
-        if isinstance(self_or_cls, type):
-            instance = SafeIdentityHasher()
-            return instance.hash_identifier(raw_id, version=version)
+        key = ""
+        if secret_provider is not None:
+            try:
+                key = secret_provider.get_secret("telemetry/hmac_key") or ""
+            except Exception:
+                pass
 
-        key = self_or_cls.get_key()
-        v = version or self_or_cls.version
+        if not key:
+            key = cls.get_hmac_key()
+
+        v = version or cls._cached_version
 
         digest = hmac.new(
             key.encode("utf-8"),
@@ -124,22 +130,18 @@ class SafeIdentityHasher:
         return f"{v}:{digest[:16]}"
 
     def hash_tenant_id(self_or_cls, raw_tenant_id: Optional[str] = None) -> str:
-        if isinstance(self_or_cls, type):
-            if not raw_tenant_id:
-                return "unknown"
-            return SafeIdentityHasher().hash_tenant_id(raw_tenant_id)
         if not raw_tenant_id:
             return "unknown"
-        return self_or_cls.hash_identifier(raw_tenant_id)
+        sec_prov = getattr(self_or_cls, "secret_provider", None) if not isinstance(self_or_cls, type) else None
+        ver = getattr(self_or_cls, "version", None) if not isinstance(self_or_cls, type) else None
+        return SafeIdentityHasher.hash_identifier(raw_tenant_id, version=ver, secret_provider=sec_prov)
 
     def hash_user_id(self_or_cls, raw_user_id: Optional[str] = None) -> str:
-        if isinstance(self_or_cls, type):
-            if not raw_user_id:
-                return "anonymous"
-            return SafeIdentityHasher().hash_user_id(raw_user_id)
         if not raw_user_id:
             return "anonymous"
-        return self_or_cls.hash_identifier(raw_user_id)
+        sec_prov = getattr(self_or_cls, "secret_provider", None) if not isinstance(self_or_cls, type) else None
+        ver = getattr(self_or_cls, "version", None) if not isinstance(self_or_cls, type) else None
+        return SafeIdentityHasher.hash_identifier(raw_user_id, version=ver, secret_provider=sec_prov)
 
     @classmethod
     def get_hmac_key(cls) -> str:

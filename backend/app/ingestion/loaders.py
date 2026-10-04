@@ -23,7 +23,6 @@ from typing import Any, Dict, List
 
 import pandas as pd
 from langchain_core.documents import Document
-from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +58,7 @@ class PDFFileLoader(BaseLoader):
     """Loads PDF files via PyPDFLoader, one Document per page."""
 
     def load(self, file_path: str, metadata: Dict[str, Any]) -> List[Document]:
+        from langchain_community.document_loaders import PyPDFLoader
         loader = PyPDFLoader(file_path)
         raw_pages = loader.load_and_split()
 
@@ -85,6 +85,7 @@ class DOCXFileLoader(BaseLoader):
     """Loads .docx files via Docx2txtLoader (full document, page = 1)."""
 
     def load(self, file_path: str, metadata: Dict[str, Any]) -> List[Document]:
+        from langchain_community.document_loaders import Docx2txtLoader
         loader = Docx2txtLoader(file_path)
         raw_docs = loader.load()
 

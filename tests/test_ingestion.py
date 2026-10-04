@@ -566,6 +566,34 @@ class TestDocumentAPIValidation(unittest.TestCase):
             self.assertIn(field, data, f"Missing response field: {field}")
 
 
+class TestLazyLoaderImports(unittest.TestCase):
+    def test_txt_loader_does_not_import_pdf_or_docx(self):
+        from app.ingestion.loaders import get_loader, TXTFileLoader, _LOADER_MAP
+        loader = get_loader("txt")
+        self.assertIsInstance(loader, TXTFileLoader)
+        # Ensure PyPDFLoader is not in top-level app.ingestion.loaders module globals
+        import app.ingestion.loaders as loaders_mod
+        self.assertFalse(hasattr(loaders_mod, "PyPDFLoader"))
+        self.assertFalse(hasattr(loaders_mod, "Docx2txtLoader"))
+
+    def test_pdf_file_loader_lazy_import(self):
+        from app.ingestion.loaders import PDFFileLoader
+        pdf_loader = PDFFileLoader()
+        self.assertTrue(hasattr(pdf_loader, "load"))
+
+    def test_docx_file_loader_lazy_import(self):
+        from app.ingestion.loaders import DOCXFileLoader
+        docx_loader = DOCXFileLoader()
+        self.assertTrue(hasattr(docx_loader, "load"))
+
+    def test_txt_ingestion_chunks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            txt_path = _write(tmpdir, "policy.txt", "Company Security Policy\nLine 1\nLine 2\nLine 3")
+            chunks = ingest_document(txt_path, tenant_id="t1")
+            self.assertGreaterEqual(len(chunks), 1)
+            self.assertIn("Company Security Policy", chunks[0].page_content)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Runner
 # ═══════════════════════════════════════════════════════════════════════════════

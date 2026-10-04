@@ -181,14 +181,16 @@ class TestSSRFDefense:
             validate_url("ftp://server/file")
 
     def test_validate_url_allows_valid_google_domain(self):
-        url, host, port = validate_url("https://www.googleapis.com/drive/v3/files", allowed_domains=DEFAULT_GOOGLE_DOMAINS)
-        assert host == "www.googleapis.com"
-        assert port == 443
+        with patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("142.250.190.46", 443))]):
+            url, host, port = validate_url("https://www.googleapis.com/drive/v3/files", allowed_domains=DEFAULT_GOOGLE_DOMAINS)
+            assert host == "www.googleapis.com"
+            assert port == 443
 
     def test_validate_url_allows_valid_microsoft_domain(self):
-        url, host, port = validate_url("https://graph.microsoft.com/v1.0/me/drive", allowed_domains=DEFAULT_MICROSOFT_DOMAINS)
-        assert host == "graph.microsoft.com"
-        assert port == 443
+        with patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("20.190.160.1", 443))]):
+            url, host, port = validate_url("https://graph.microsoft.com/v1.0/me/drive", allowed_domains=DEFAULT_MICROSOFT_DOMAINS)
+            assert host == "graph.microsoft.com"
+            assert port == 443
 
 
 # ═════════════════════════════════════════════════════════════════════════════

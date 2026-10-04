@@ -88,6 +88,7 @@ class DocumentIngestHandler(TaskHandler):
         ext = orig_filename.rsplit(".", 1)[-1].lower() if "." in orig_filename else "txt"
 
         try:
+            context.heartbeat(task.id)
             if not os.path.exists(storage_path) or storage_path.startswith("s3://"):
                 # Use explicit verified temporary file context manager
                 with blob_storage.verified_temp_file(
@@ -95,6 +96,7 @@ class DocumentIngestHandler(TaskHandler):
                     expected_hash=db_doc.content_hash,
                     suffix=f".{ext}",
                 ) as verified_path:
+                    context.heartbeat(task.id)
                     chunks = ingest_document(
                         verified_path,
                         tenant_id=tenant_id,
@@ -104,9 +106,11 @@ class DocumentIngestHandler(TaskHandler):
                         allowed_user_ids=allowed_user_ids,
                         permission_status="KNOWN",
                     )
+                    context.heartbeat(task.id)
             else:
                 # Local file: verify checksum before parsing
                 _ = blob_storage.download_verified(storage_path, expected_hash=db_doc.content_hash)
+                context.heartbeat(task.id)
                 chunks = ingest_document(
                     storage_path,
                     tenant_id=tenant_id,
@@ -116,6 +120,7 @@ class DocumentIngestHandler(TaskHandler):
                     allowed_user_ids=allowed_user_ids,
                     permission_status="KNOWN",
                 )
+                context.heartbeat(task.id)
         except StorageIntegrityError as exc:
             logger.error(f"[IngestHandler] Critical integrity violation on doc {document_id}: {exc}")
             doc_repo.update_status(document_id, status="FAILED", error_message="Document integrity check failed (corrupted content).")
@@ -182,7 +187,9 @@ class DocumentIngestHandler(TaskHandler):
                     metadata_json=c.metadata,
                 )
             )
+        context.heartbeat(task.id)
         chunk_repo.create_batch(db_chunks)
+        context.heartbeat(task.id)
         updated_doc = doc_repo.update_status(document_id, status="INDEXING")
         current_version = updated_doc.version if updated_doc else current_version + 1
         context.db.commit()

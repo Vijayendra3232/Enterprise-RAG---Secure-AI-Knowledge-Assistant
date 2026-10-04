@@ -221,6 +221,64 @@ def test_mongo_vector_store_batch_embedding_count_mismatch():
             store._ensure_payload_embeddings_batch(payloads)
 
 
+def test_mongo_vector_store_micro_batch_and_timing_safety(fake_mongo_store, caplog):
+    import logging
+    store, fake_coll = fake_mongo_store
+    payloads = [
+        ChunkPayload(
+            chunk_id=f"chunk_{i}",
+            document_id="doc_mb",
+            tenant_id="tenant_a",
+            document_version=1,
+            content=f"Secret Content {i}",
+            content_hash=f"hash_{i}",
+            embedding=None,
+        )
+        for i in range(20)  # > 16 to test micro-batching
+    ]
+
+    mock_embedder = MagicMock()
+    mock_embedder.embed_documents.side_effect = lambda texts: [[0.05] * 384 for _ in range(len(texts))]
+
+    with caplog.at_level(logging.INFO):
+        with patch("app.core.embeddings.load_embedding_model", return_value=mock_embedder) as mock_load:
+            count = store.index_chunks(payloads)
+            assert count == 20
+            # Ensure load_embedding_model was called with model_name
+            mock_load.assert_called_with("all-MiniLM-L6-v2")
+            # Ensure embed_documents was called twice (batch 1: 16 items, batch 2: 4 items)
+            assert mock_embedder.embed_documents.call_count == 2
+
+            # Verify logs contain timing instrumentation and NO sensitive document content
+            logs = caplog.text
+            assert "[MongoVectorStore] Fallback micro-batch 1 (16 items) completed in" in logs
+            assert "[MongoVectorStore] Fallback micro-batch 2 (4 items) completed in" in logs
+            assert "Secret Content" not in logs  # Document content must NEVER be logged
+
+
+def test_mongo_vector_store_bulk_write_idempotency(fake_mongo_store):
+    store, fake_coll = fake_mongo_store
+    payload = ChunkPayload(
+        chunk_id="chunk_idempotent_1",
+        document_id="doc_idempotent",
+        tenant_id="tenant_a",
+        document_version=1,
+        content="Idempotent content",
+        content_hash="hash_idempotent",
+        embedding=[0.01] * 384,
+    )
+
+    count1 = store.index_chunks([payload])
+    assert count1 == 1
+    assert len(fake_coll.docs) == 1
+
+    # Re-indexing the exact same chunk payload must succeed idempotently
+    count2 = store.index_chunks([payload])
+    assert count2 == 1
+    assert len(fake_coll.docs) == 1
+
+
+
 def test_health_check_healthy(fake_mongo_store):
     store, _ = fake_mongo_store
     health = store.health_check()

@@ -191,6 +191,9 @@ class DocumentIngestHandler(TaskHandler):
         search_store = context.search_store
         if search_store:
             try:
+                import time
+                from app import config
+
                 context.heartbeat(task.id)
 
                 # Retrieve or load embedding model using standard project abstraction
@@ -198,19 +201,45 @@ class DocumentIngestHandler(TaskHandler):
                 embedder = rag_service.embeddings if (rag_service and hasattr(rag_service, "embeddings")) else None
                 if embedder is None:
                     from app.core import embeddings
-                    embedder = embeddings.load_embedding_model()
+                    model_name = getattr(config, "EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
+                    t_load_start = time.perf_counter()
+                    embedder = embeddings.load_embedding_model(model_name)
+                    load_ms = (time.perf_counter() - t_load_start) * 1000.0
+                    logger.info(f"[IngestHandler] Embedding model '{model_name}' loaded in {load_ms:.2f} ms")
 
                 if hasattr(search_store, "vector_db") and getattr(search_store, "vector_db", None) is None and rag_service and hasattr(rag_service, "vector_db"):
                     search_store.vector_db = rag_service.vector_db
 
-                # Batch generate embeddings across all chunks at once
+                # Batch generate embeddings across all chunks in micro-batches with heartbeats & timing
                 embeddings_list = []
                 if embedder and chunks:
                     texts = [c.page_content for c in chunks]
-                    if hasattr(embedder, "embed_documents"):
-                        embeddings_list = embedder.embed_documents(texts)
-                    else:
-                        embeddings_list = [embedder.embed_query(t) for t in texts]
+                    MICRO_BATCH_SIZE = 16
+                    total_texts = len(texts)
+                    t_embed_start = time.perf_counter()
+
+                    for batch_idx, i in enumerate(range(0, total_texts, MICRO_BATCH_SIZE)):
+                        context.heartbeat(task.id)
+                        batch_texts = texts[i : i + MICRO_BATCH_SIZE]
+                        t_batch_start = time.perf_counter()
+
+                        if hasattr(embedder, "embed_documents"):
+                            sub_vecs = embedder.embed_documents(batch_texts)
+                        else:
+                            sub_vecs = [embedder.embed_query(t) for t in batch_texts]
+
+                        batch_elapsed_ms = (time.perf_counter() - t_batch_start) * 1000.0
+                        embeddings_list.extend(sub_vecs)
+                        context.heartbeat(task.id)
+
+                        logger.info(
+                            f"[IngestHandler] Micro-batch {batch_idx + 1} processed {len(batch_texts)} chunks in {batch_elapsed_ms:.2f} ms"
+                        )
+
+                    total_embed_ms = (time.perf_counter() - t_embed_start) * 1000.0
+                    logger.info(
+                        f"[IngestHandler] Total embedding completed for {total_texts} chunks in {total_embed_ms:.2f} ms"
+                    )
 
                 chunk_payloads = []
                 for idx, c in enumerate(chunks):
@@ -231,8 +260,14 @@ class DocumentIngestHandler(TaskHandler):
                     )
 
                 context.heartbeat(task.id)
-                search_store.index_chunks(chunk_payloads)
+                t_index_start = time.perf_counter()
+                indexed_count = search_store.index_chunks(chunk_payloads)
+                index_elapsed_ms = (time.perf_counter() - t_index_start) * 1000.0
                 context.heartbeat(task.id)
+
+                logger.info(
+                    f"[IngestHandler] Search store indexing completed ({indexed_count} chunks) in {index_elapsed_ms:.2f} ms"
+                )
             except Exception as exc:
                 logger.error(f"[IngestHandler] Search store indexing failed on doc {document_id}: {exc}")
                 raise RetryableTaskError(f"Search store indexing failure: {exc}") from exc

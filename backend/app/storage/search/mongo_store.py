@@ -97,8 +97,8 @@ class MongoVectorStore(SearchStoreInterface):
 
     def _ensure_payload_embeddings_batch(self, payloads: List[ChunkPayload]) -> None:
         """
-        Batch generate embeddings for all payloads with missing or invalid vectors in a single call.
-        Eliminates sequential embed_query() calls inside bulk indexing loops.
+        Batch generate embeddings for all payloads with missing or invalid vectors using micro-batches.
+        Eliminates sequential embed_query() calls inside bulk indexing loops and logs safe timing.
         """
         missing_indices = []
         missing_texts = []
@@ -111,12 +111,37 @@ class MongoVectorStore(SearchStoreInterface):
         if not missing_texts:
             return
 
+        import time
         from app.core import embeddings
+
+        t_load_start = time.perf_counter()
         embedder = embeddings.load_embedding_model(self.embedding_model_name)
-        if hasattr(embedder, "embed_documents"):
-            computed_vectors = embedder.embed_documents(missing_texts)
-        else:
-            computed_vectors = [embedder.embed_query(t) for t in missing_texts]
+        model_load_ms = (time.perf_counter() - t_load_start) * 1000.0
+        logger.info(f"[MongoVectorStore] Fallback embedding model loaded in {model_load_ms:.2f} ms")
+
+        computed_vectors = []
+        MICRO_BATCH_SIZE = 16
+        t_embed_start = time.perf_counter()
+
+        for batch_idx, i in enumerate(range(0, len(missing_texts), MICRO_BATCH_SIZE)):
+            sub_texts = missing_texts[i : i + MICRO_BATCH_SIZE]
+            t_batch_start = time.perf_counter()
+
+            if hasattr(embedder, "embed_documents"):
+                sub_vecs = embedder.embed_documents(sub_texts)
+            else:
+                sub_vecs = [embedder.embed_query(t) for t in sub_texts]
+
+            batch_elapsed_ms = (time.perf_counter() - t_batch_start) * 1000.0
+            computed_vectors.extend(sub_vecs)
+            logger.info(
+                f"[MongoVectorStore] Fallback micro-batch {batch_idx + 1} ({len(sub_texts)} items) completed in {batch_elapsed_ms:.2f} ms"
+            )
+
+        total_embed_ms = (time.perf_counter() - t_embed_start) * 1000.0
+        logger.info(
+            f"[MongoVectorStore] Total fallback embedding completed for {len(missing_texts)} items in {total_embed_ms:.2f} ms"
+        )
 
         if len(computed_vectors) != len(missing_texts):
             logger.error(
@@ -182,6 +207,8 @@ class MongoVectorStore(SearchStoreInterface):
 
         try:
             import pymongo
+            import time
+
             operations = []
             for p in payloads:
                 doc = {
@@ -203,7 +230,13 @@ class MongoVectorStore(SearchStoreInterface):
                     )
                 )
 
+            t_bulk_start = time.perf_counter()
             res = coll.bulk_write(operations)
+            bulk_ms = (time.perf_counter() - t_bulk_start) * 1000.0
+            logger.info(
+                f"[MongoVectorStore] MongoDB bulk_write of {len(operations)} operations completed in {bulk_ms:.2f} ms"
+            )
+
             return res.inserted_count + res.modified_count + res.upserted_count
         except Exception as exc:
             logger.error(f"[MongoVectorStore] index_chunks bulk write failed: {exc.__class__.__name__}")

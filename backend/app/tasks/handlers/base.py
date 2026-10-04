@@ -36,6 +36,19 @@ class WorkerContext:
     rag_service: Optional[Any] = None
     worker_id: str = "worker-default"
 
+    def heartbeat(self, task_id: str) -> None:
+        """Update task.updated_at to current timestamp to prevent stale recovery during active processing."""
+        if not task_id or not self.db:
+            return
+        try:
+            from datetime import datetime, timezone
+            from app.storage.models.task import Task
+            now = datetime.now(timezone.utc)
+            self.db.query(Task).filter(Task.id == task_id).update({"updated_at": now})
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+
 
 class TaskHandler(ABC):
     """

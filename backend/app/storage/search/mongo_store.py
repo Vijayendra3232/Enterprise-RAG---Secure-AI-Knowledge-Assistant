@@ -95,15 +95,43 @@ class MongoVectorStore(SearchStoreInterface):
             logger.error(f"[MongoVectorStore] Collection access error: {exc.__class__.__name__}")
             return None
 
-    def _ensure_payload_embedding(self, payload: ChunkPayload) -> List[float]:
-        """Ensure chunk payload has a valid 384-dimensional embedding."""
-        if payload.embedding and isinstance(payload.embedding, list) and len(payload.embedding) == self.configured_dimension:
-            return payload.embedding
+    def _ensure_payload_embeddings_batch(self, payloads: List[ChunkPayload]) -> None:
+        """
+        Batch generate embeddings for all payloads with missing or invalid vectors in a single call.
+        Eliminates sequential embed_query() calls inside bulk indexing loops.
+        """
+        missing_indices = []
+        missing_texts = []
 
+        for idx, p in enumerate(payloads):
+            if not p.embedding or not isinstance(p.embedding, list) or len(p.embedding) != self.configured_dimension:
+                missing_indices.append(idx)
+                missing_texts.append(p.content)
+
+        if not missing_texts:
+            return
+
+        from app.core import embeddings
         embedder = embeddings.load_embedding_model(self.embedding_model_name)
-        vec = embedder.embed_query(payload.content)
-        payload.embedding = vec
-        return vec
+        if hasattr(embedder, "embed_documents"):
+            computed_vectors = embedder.embed_documents(missing_texts)
+        else:
+            computed_vectors = [embedder.embed_query(t) for t in missing_texts]
+
+        if len(computed_vectors) != len(missing_texts):
+            logger.error(
+                f"[MongoVectorStore] Embedding count mismatch: expected {len(missing_texts)}, got {len(computed_vectors)}"
+            )
+            raise ValueError(f"Batch embedding returned {len(computed_vectors)} vectors for {len(missing_texts)} payloads")
+
+        for missing_pos, target_idx in enumerate(missing_indices):
+            vec = computed_vectors[missing_pos]
+            if not vec or not isinstance(vec, list) or len(vec) != self.configured_dimension:
+                logger.error(f"[MongoVectorStore] Invalid embedding dimension for payload at index {target_idx}")
+                raise ValueError(
+                    f"Generated vector dimension {len(vec) if isinstance(vec, list) else 0} != configured {self.configured_dimension}"
+                )
+            payloads[target_idx].embedding = vec
 
     def index_chunk(self, payload: ChunkPayload) -> bool:
         """
@@ -115,12 +143,12 @@ class MongoVectorStore(SearchStoreInterface):
             return False
 
         try:
-            emb = self._ensure_payload_embedding(payload)
+            self._ensure_payload_embeddings_batch([payload])
             doc = {
                 "chunk_id": payload.chunk_id,
                 "document_id": payload.document_id,
                 "tenant_id": payload.tenant_id,
-                "embedding": emb,
+                "embedding": payload.embedding,
                 "embedding_model": self.embedding_model_name,
                 "version": payload.document_version,
                 "content": payload.content,
@@ -149,16 +177,18 @@ class MongoVectorStore(SearchStoreInterface):
             logger.warning("[MongoVectorStore] MongoDB collection unavailable for index_chunks.")
             return 0
 
+        # Batch embed any payloads missing valid 384-dim embeddings ONCE before building operations
+        self._ensure_payload_embeddings_batch(payloads)
+
         try:
             import pymongo
             operations = []
             for p in payloads:
-                emb = self._ensure_payload_embedding(p)
                 doc = {
                     "chunk_id": p.chunk_id,
                     "document_id": p.document_id,
                     "tenant_id": p.tenant_id,
-                    "embedding": emb,
+                    "embedding": p.embedding,
                     "embedding_model": self.embedding_model_name,
                     "version": p.document_version,
                     "content": p.content,
@@ -177,7 +207,7 @@ class MongoVectorStore(SearchStoreInterface):
             return res.inserted_count + res.modified_count + res.upserted_count
         except Exception as exc:
             logger.error(f"[MongoVectorStore] index_chunks bulk write failed: {exc.__class__.__name__}")
-            # Fallback to single replacement loop
+            # Fallback to single replacement loop with batch-embedded payloads
             count = 0
             for p in payloads:
                 if self.index_chunk(p):

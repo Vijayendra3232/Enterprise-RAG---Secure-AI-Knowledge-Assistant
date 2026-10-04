@@ -191,12 +191,18 @@ class DocumentIngestHandler(TaskHandler):
         search_store = context.search_store
         if search_store:
             try:
-                # Generate embeddings if needed
+                context.heartbeat(task.id)
+
+                # Retrieve or load embedding model using standard project abstraction
                 rag_service = context.rag_service
                 embedder = rag_service.embeddings if (rag_service and hasattr(rag_service, "embeddings")) else None
+                if embedder is None:
+                    from app.core import embeddings
+                    embedder = embeddings.load_embedding_model()
+
                 if hasattr(search_store, "vector_db") and getattr(search_store, "vector_db", None) is None and rag_service and hasattr(rag_service, "vector_db"):
                     search_store.vector_db = rag_service.vector_db
-                
+
                 # Batch generate embeddings across all chunks at once
                 embeddings_list = []
                 if embedder and chunks:
@@ -223,9 +229,12 @@ class DocumentIngestHandler(TaskHandler):
                             metadata=c.metadata,
                         )
                     )
+
+                context.heartbeat(task.id)
                 search_store.index_chunks(chunk_payloads)
+                context.heartbeat(task.id)
             except Exception as exc:
-                logger.error(f"[IngestHandler] OpenSearch indexing failed on doc {document_id}: {exc}")
+                logger.error(f"[IngestHandler] Search store indexing failed on doc {document_id}: {exc}")
                 raise RetryableTaskError(f"Search store indexing failure: {exc}") from exc
 
 

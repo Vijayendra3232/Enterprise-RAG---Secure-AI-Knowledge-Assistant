@@ -162,6 +162,65 @@ def test_mongodb_srv_uri_and_timeout_configuration():
         )
 
 
+def test_mongo_vector_store_batch_embedding_fallback(fake_mongo_store):
+    store, fake_coll = fake_mongo_store
+    payloads = [
+        ChunkPayload(
+            chunk_id=f"chunk_missing_{i}",
+            document_id="doc_missing",
+            tenant_id="tenant_a",
+            document_version=1,
+            content=f"Missing embedding text {i}",
+            content_hash=f"hash_{i}",
+            embedding=None,  # Missing embedding
+        )
+        for i in range(3)
+    ]
+
+    mock_embedder = MagicMock()
+    mock_embedder.embed_documents.side_effect = lambda texts: [[0.02 * (i + 1)] * 384 for i in range(len(texts))]
+
+    with patch("app.core.embeddings.load_embedding_model", return_value=mock_embedder):
+        count = store.index_chunks(payloads)
+        assert count == 3
+        # Verify embed_documents was called ONCE with all missing texts
+        assert mock_embedder.embed_documents.call_count == 1
+        assert mock_embedder.embed_query.call_count == 0
+        call_texts = mock_embedder.embed_documents.call_args[0][0]
+        assert call_texts == ["Missing embedding text 0", "Missing embedding text 1", "Missing embedding text 2"]
+
+        # Verify exact ordering and 384-dim vector values in payloads
+        assert payloads[0].embedding == [0.02] * 384
+        assert payloads[1].embedding == [0.04] * 384
+        assert payloads[2].embedding == [0.06] * 384
+
+        # Verify bulk_write received all 3 ReplaceOne operations
+        assert len(fake_coll.docs) == 3
+
+
+def test_mongo_vector_store_batch_embedding_count_mismatch():
+    store = MongoVectorStore(mongo_uri="mongodb://localhost:27017")
+    payloads = [
+        ChunkPayload(
+            chunk_id=f"c_{i}",
+            document_id="doc1",
+            tenant_id="tenant_a",
+            document_version=1,
+            content=f"Text {i}",
+            content_hash=f"h{i}",
+            embedding=None,
+        )
+        for i in range(3)
+    ]
+
+    mock_embedder = MagicMock()
+    mock_embedder.embed_documents.return_value = [[0.1] * 384]  # Mismatch: returns 1 vector for 3 texts
+
+    with patch("app.core.embeddings.load_embedding_model", return_value=mock_embedder):
+        with pytest.raises(ValueError, match="Batch embedding returned 1 vectors for 3 payloads"):
+            store._ensure_payload_embeddings_batch(payloads)
+
+
 def test_health_check_healthy(fake_mongo_store):
     store, _ = fake_mongo_store
     health = store.health_check()

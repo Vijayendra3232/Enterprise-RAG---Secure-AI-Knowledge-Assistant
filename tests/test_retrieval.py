@@ -58,16 +58,7 @@ class MockCrossEncoder:
         # Simply return scores based on content length for deterministic ranking
         return [float(len(p[1])) for p in pairs]
 
-# Apply global mocks before importing retrieval modules
-patcher_embeddings = patch("app.core.embeddings.load_embedding_model", return_value=MockEmbeddings())
-patcher_embeddings.start()
-
-patcher_llm = patch("app.core.llm.LLM", return_value=MockLLM())
-patcher_llm.start()
-
 import app.retrieval.reranker
-patcher_ce = patch("app.retrieval.reranker.CrossEncoder", side_effect=MockCrossEncoder)
-patcher_ce.start()
 
 # Now import modules to test
 from langchain_core.documents import Document
@@ -136,6 +127,20 @@ class DummyVectorStore(VectorStoreInterface):
 # --- Test Cases ---
 
 class TestAdvancedRetrieval(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.patcher_embeddings = patch("app.core.embeddings.load_embedding_model", return_value=MockEmbeddings())
+        cls.patcher_embeddings.start()
+        cls.patcher_llm = patch("app.core.llm.LLM", return_value=MockLLM())
+        cls.patcher_llm.start()
+        cls.patcher_ce = patch("app.retrieval.reranker.CrossEncoder", side_effect=MockCrossEncoder)
+        cls.patcher_ce.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.patcher_embeddings.stop()
+        cls.patcher_llm.stop()
+        cls.patcher_ce.stop()
     def setUp(self):
         self.vector_store = DummyVectorStore()
         self.vector_retriever = VectorRetriever(self.vector_store)

@@ -18,28 +18,18 @@ class MockEmbeddings:
     def embed_query(self, text):
         return [0.1] * 384
 
-# Start embeddings patcher
-patcher = patch('app.core.embeddings.load_embedding_model', return_value=MockEmbeddings())
-patcher.start()
-
-# 3. Conditional LLM mock if GROQ_API_KEY is not set (to prevent server crash during health check tests)
-llm_patcher = None
-if not os.getenv("GROQ_API_KEY"):
-    class MockLLM:
-        def __init__(self, *args, **kwargs):
-            self.llm_params = args[0] if args else {}
-            self.model_id = args[1] if len(args) > 1 else "mock-model"
-        def generate_response(self, prompt):
-            # For query expansion, return a mock python list string
-            if "semantically equivalent search queries" in prompt:
-                return '["query 1", "query 2"]'
-            return """{
-                "answer": "Mock LLM Response with sufficient details.",
-                "claims": [{"text": "Mock LLM Response with sufficient details.", "evidence_ids": ["C1"]}]
-            }"""
-
-    llm_patcher = patch('app.core.llm.LLM', return_value=MockLLM())
-    llm_patcher.start()
+# 3. Conditional LLM mock class if GROQ_API_KEY is not set
+class MockLLM:
+    def __init__(self, *args, **kwargs):
+        self.llm_params = args[0] if args else {}
+        self.model_id = args[1] if len(args) > 1 else "mock-model"
+    def generate_response(self, prompt):
+        if "semantically equivalent search queries" in prompt:
+            return '["query 1", "query 2"]'
+        return """{
+            "answer": "Mock LLM Response with sufficient details.",
+            "claims": [{"text": "Mock LLM Response with sufficient details.", "evidence_ids": ["C1"]}]
+        }"""
 
 # Now safe to import app components
 from app.main import app
@@ -47,6 +37,20 @@ from app import config
 from app.ingestion.pipeline import IngestionPipeline
 
 class TestBackend(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.patcher = patch('app.core.embeddings.load_embedding_model', return_value=MockEmbeddings())
+        cls.patcher.start()
+        cls.llm_patcher = None
+        if not os.getenv("GROQ_API_KEY"):
+            cls.llm_patcher = patch('app.core.llm.LLM', return_value=MockLLM())
+            cls.llm_patcher.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.patcher.stop()
+        if cls.llm_patcher:
+            cls.llm_patcher.stop()
     def test_config(self):
         """Verify configuration is loaded correctly."""
         print("\nTesting Configuration...")

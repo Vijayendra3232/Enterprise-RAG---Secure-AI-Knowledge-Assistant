@@ -38,8 +38,8 @@ class FastBenchmarkEmbeddings:
     def embed_query(self, text):
         return [0.05] * 384
 
-patcher = patch("app.core.embeddings.load_embedding_model", return_value=FastBenchmarkEmbeddings())
-patcher.start()
+# Fast benchmark embeddings adapter for benchmark runs
+# (Patched per-test or per-fixture in test suites)
 
 from tests.step15_config import (
     TestMode,

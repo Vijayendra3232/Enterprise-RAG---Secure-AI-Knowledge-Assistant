@@ -119,19 +119,7 @@ class MockCrossEncoder:
         # Yield deterministic score based on length of content
         return [float(len(p[1])) for p in pairs]
 
-# Apply patches
-patcher_embed = patch("app.core.embeddings.load_embedding_model", return_value=MockEmbeddings())
-patcher_embed.start()
-
-patcher_llm = patch("app.core.llm.LLM", return_value=MockLLM())
-patcher_llm.start()
-
-patcher_gen_llm = patch("app.generation.generator.LLM", return_value=MockLLM())
-patcher_gen_llm.start()
-
 import app.retrieval.reranker
-patcher_ce = patch("app.retrieval.reranker.CrossEncoder", return_value=MockCrossEncoder())
-patcher_ce.start()
 
 # Now import modules
 from app.retrieval.models import SearchResult
@@ -180,6 +168,23 @@ class DummyVectorDB(VectorStoreInterface):
 # --- Test Cases ---
 
 class TestQueryContext(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.patcher_embed = patch("app.core.embeddings.load_embedding_model", return_value=MockEmbeddings())
+        cls.patcher_embed.start()
+        cls.patcher_llm = patch("app.core.llm.LLM", return_value=MockLLM())
+        cls.patcher_llm.start()
+        cls.patcher_gen_llm = patch("app.generation.generator.LLM", return_value=MockLLM())
+        cls.patcher_gen_llm.start()
+        cls.patcher_ce = patch("app.retrieval.reranker.CrossEncoder", return_value=MockCrossEncoder())
+        cls.patcher_ce.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.patcher_embed.stop()
+        cls.patcher_llm.stop()
+        cls.patcher_gen_llm.stop()
+        cls.patcher_ce.stop()
     def setUp(self):
         self.analyzer = QueryAnalyzer()
         # Force-inject MockLLM for offline test runs

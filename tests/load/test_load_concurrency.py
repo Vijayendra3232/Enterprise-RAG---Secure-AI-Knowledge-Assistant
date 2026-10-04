@@ -19,9 +19,16 @@ from tests.step15_config import TestMode, TestResultStatus
 from tests.load.concurrency_benchmark import (
     generate_synthetic_corpus,
     ConcurrencyBenchmarkRunner,
+    FastBenchmarkEmbeddings,
     QUERY_MIX,
 )
 from tests.load.soak_test import run_soak_benchmark
+
+
+@pytest.fixture(autouse=True, scope="module")
+def mock_load_embeddings_for_concurrency():
+    with patch("app.core.embeddings.load_embedding_model", return_value=FastBenchmarkEmbeddings()):
+        yield
 
 
 @pytest.fixture(scope="module")

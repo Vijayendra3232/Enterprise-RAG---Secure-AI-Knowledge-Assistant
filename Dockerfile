@@ -1,4 +1,4 @@
-# Multi-Stage Hardened Production Dockerfile (Backend context)
+# Multi-Stage Hardened Production Dockerfile
 # Stage 1: Dependency Builder
 FROM python:3.12-slim AS builder
 

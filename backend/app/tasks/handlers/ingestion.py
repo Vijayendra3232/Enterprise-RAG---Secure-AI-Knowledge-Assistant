@@ -38,6 +38,7 @@ class DocumentIngestHandler(TaskHandler):
         return task_type == TaskType.DOCUMENT_INGEST.value
 
     def handle(self, task: Task, context: WorkerContext) -> Dict[str, Any]:
+        context.heartbeat(task.id)
         payload = task.payload or {}
         document_id = payload.get("document_id")
         tenant_id = task.tenant_id

@@ -143,18 +143,21 @@ class WorkerRunner:
                 f"worker.task.{task.task_type.lower()}",
                 attributes={"task.type": task.task_type, "task.attempt": task.attempt_count},
             ) as span:
-                search_store = get_search_store()
-                blob_storage = get_document_storage()
-                secret_provider = get_secret_provider()
-
                 context = WorkerContext(
                     db=db,
-                    search_store=search_store,
-                    blob_storage=blob_storage,
-                    secret_provider=secret_provider,
                     rag_service=self.rag_service,
                     worker_id=self.worker_id,
                 )
+                # Immediate early heartbeat right after task claim & context creation
+                context.heartbeat(task.id)
+
+                # Initialize dependencies with heartbeat coverage
+                context.search_store = get_search_store()
+                context.heartbeat(task.id)
+
+                context.blob_storage = get_document_storage()
+                context.secret_provider = get_secret_provider()
+                context.heartbeat(task.id)
 
                 result = handler.handle(task, context)
                 duration_ms = (time.perf_counter() - t_start) * 1000

@@ -59,12 +59,15 @@ class TestEmbeddingPrewarm(unittest.TestCase):
         embeddings.load_embedding_model.cache_clear()
 
     def test_lifespan_prewarm_failure_in_production(self):
-        """Verify lifespan raises RuntimeError in production if model pre-warming fails."""
+        """Verify lifespan raises RuntimeError in production if model pre-warming fails when enabled."""
         from app.main import lifespan
+        from app import config
         from fastapi import FastAPI
 
         app = FastAPI()
         with patch.dict(os.environ, {"ENVIRONMENT": "production"}), patch.object(
+            config, "PREWARM_EMBEDDING_MODEL", True
+        ), patch.object(
             embeddings, "load_embedding_model", side_effect=RuntimeError("Model missing from cache")
         ):
             async def run_lifespan():

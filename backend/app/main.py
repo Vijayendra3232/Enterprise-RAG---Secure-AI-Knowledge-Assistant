@@ -67,21 +67,22 @@ async def lifespan(app: FastAPI):
         llm_model_id=config.GROQ_MODEL_ID,
     )
 
-    # Pre-warm global text embedding model in memory before worker pool startup
-    try:
-        from app.core.embeddings import load_embedding_model
-        print(f"[Lifespan] Pre-warming text embedding model '{config.EMBEDDING_MODEL_NAME}'...")
-        _embedder = load_embedding_model(config.EMBEDDING_MODEL_NAME)
-        print(f"[Lifespan] Text embedding model '{config.EMBEDDING_MODEL_NAME}' successfully loaded into memory.")
-    except Exception as e:
-        print(f"[Lifespan] CRITICAL: Failed to load pre-baked embedding model '{config.EMBEDDING_MODEL_NAME}': {e}")
-        is_prod = (
-            os.getenv("ENVIRONMENT", "").lower() == "production"
-            or os.getenv("APP_ENV", "").lower() == "production"
-            or getattr(config, "ENVIRONMENT", "development") == "production"
-        )
-        if is_prod:
-            raise RuntimeError(f"Failed to pre-warm required embedding model in production: {e}") from e
+    # Lazy model loading: Skip eager startup pre-warming by default to save ~240MB RAM in 512MB environments
+    if getattr(config, "PREWARM_EMBEDDING_MODEL", False):
+        try:
+            from app.core.embeddings import load_embedding_model
+            print(f"[Lifespan] Pre-warming text embedding model '{config.EMBEDDING_MODEL_NAME}'...")
+            _embedder = load_embedding_model(config.EMBEDDING_MODEL_NAME)
+            print(f"[Lifespan] Text embedding model '{config.EMBEDDING_MODEL_NAME}' successfully loaded into memory.")
+        except Exception as e:
+            print(f"[Lifespan] CRITICAL: Failed to load pre-baked embedding model '{config.EMBEDDING_MODEL_NAME}': {e}")
+            is_prod = (
+                os.getenv("ENVIRONMENT", "").lower() == "production"
+                or os.getenv("APP_ENV", "").lower() == "production"
+                or getattr(config, "ENVIRONMENT", "development") == "production"
+            )
+            if is_prod:
+                raise RuntimeError(f"Failed to pre-warm required embedding model in production: {e}") from e
 
     # Embedded worker pool for local testing and development only
     embedded_pool = None

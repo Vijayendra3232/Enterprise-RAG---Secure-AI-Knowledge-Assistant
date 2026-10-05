@@ -148,8 +148,10 @@ MONGODB_COLLECTION = os.getenv("MONGODB_COLLECTION", "chunk_vectors")
 MONGODB_VECTOR_INDEX = os.getenv("MONGODB_VECTOR_INDEX", "vector_index")
 
 # --- Asynchronous Task Execution & Worker Architecture ---
+PREWARM_EMBEDDING_MODEL = os.getenv("PREWARM_EMBEDDING_MODEL", "false").lower() == "true"
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "1"))
 WORKER_EMBEDDED = os.getenv("WORKER_EMBEDDED", "false").lower() == "true"  # DEV/TEST ONLY
-WORKER_CONCURRENCY = int(os.getenv("WORKER_CONCURRENCY", "2"))
+WORKER_CONCURRENCY = int(os.getenv("WORKER_CONCURRENCY", "1"))
 WORKER_POLL_INTERVAL_SECONDS = float(os.getenv("WORKER_POLL_INTERVAL_SECONDS", "1.0"))
 TASK_CLAIM_TIMEOUT_SECONDS = int(os.getenv("TASK_CLAIM_TIMEOUT_SECONDS", "300"))
 TASK_MAX_ATTEMPTS = int(os.getenv("TASK_MAX_ATTEMPTS", "3"))

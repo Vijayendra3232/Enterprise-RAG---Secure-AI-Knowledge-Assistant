@@ -222,7 +222,7 @@ class DocumentIngestHandler(TaskHandler):
                 embeddings_list = []
                 if embedder and chunks:
                     texts = [c.page_content for c in chunks]
-                    MICRO_BATCH_SIZE = 16
+                    MICRO_BATCH_SIZE = getattr(config, "EMBEDDING_BATCH_SIZE", 1)
                     total_texts = len(texts)
                     t_embed_start = time.perf_counter()
 
@@ -272,6 +272,12 @@ class DocumentIngestHandler(TaskHandler):
                 indexed_count = search_store.index_chunks(chunk_payloads)
                 index_elapsed_ms = (time.perf_counter() - t_index_start) * 1000.0
                 context.heartbeat(task.id)
+
+                # Clean up intermediate embedding memory allocations
+                del embeddings_list
+                del chunk_payloads
+                import gc
+                gc.collect()
 
                 logger.info(
                     f"[IngestHandler] Search store indexing completed ({indexed_count} chunks) in {index_elapsed_ms:.2f} ms"

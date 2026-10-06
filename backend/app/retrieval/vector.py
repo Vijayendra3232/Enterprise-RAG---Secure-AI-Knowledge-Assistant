@@ -1,9 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Dict, Any, Optional
-import chromadb
 from langchain_core.documents import Document
-from langchain_community.vectorstores import Chroma
 from app.core import embeddings
 from app import config
 from app.retrieval.models import SearchResult
@@ -29,6 +27,9 @@ class ChromaVectorStore(VectorStoreInterface):
     Chroma Vector Store implementation used for local development and persistence.
     """
     def __init__(self, persist_dir: str, collection_name: str, embedding_model_name: str):
+        import chromadb
+        from langchain_community.vectorstores import Chroma
+
         self.persist_dir = persist_dir
         self.collection_name = collection_name
         self.embedding_model_name = embedding_model_name

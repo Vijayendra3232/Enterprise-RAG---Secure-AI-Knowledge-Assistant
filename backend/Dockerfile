@@ -15,15 +15,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV HF_HOME=/root/.cache/huggingface
 
 COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir --user torch --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Pre-download and cache embedding model weights into HF_HOME during image build
+# Pre-download and cache ONNX embedding model weights and tokenizer into HF_HOME during image build
 RUN PYTHONPATH=/root/.local/lib/python3.12/site-packages python3 -c \
-    "from langchain_huggingface import HuggingFaceEmbeddings; \
-from huggingface_hub import snapshot_download; \
+    "from huggingface_hub import hf_hub_download, snapshot_download; \
 snapshot_download(repo_id='sentence-transformers/all-MiniLM-L6-v2'); \
-HuggingFaceEmbeddings(model_name='all-MiniLM-L6-v2', model_kwargs={'trust_remote_code': True})"
+hf_hub_download(repo_id='sentence-transformers/all-MiniLM-L6-v2', filename='onnx/model.onnx')"
 
 # Explicit build-stage model snapshot and artifact verification (Fails build immediately if incomplete)
 RUN PYTHONPATH=/root/.local/lib/python3.12/site-packages python3 -c \
@@ -35,18 +33,14 @@ snapshots = [os.path.join(snapshots_dir, d) for d in os.listdir(snapshots_dir) i
 assert len(snapshots) > 0, f'CRITICAL: No snapshot subdirectories found in {snapshots_dir}'; \
 snapshot_dir = snapshots[0]; \
 print(f'[Docker Build] Resolved snapshot directory: {snapshot_dir}'); \
-req_files = ['config.json', 'modules.json']; \
-missing_req = [f for f in req_files if not os.path.isfile(os.path.join(snapshot_dir, f))]; \
-assert not missing_req, f'CRITICAL: Required model config files missing in snapshot: {missing_req}'; \
-weight_files = ['model.safetensors', 'pytorch_model.bin']; \
-found_weights = [w for w in weight_files if os.path.isfile(os.path.join(snapshot_dir, w))]; \
-assert len(found_weights) > 0, f'CRITICAL: No model weight files ({weight_files}) found in snapshot {snapshot_dir}'; \
-tok_files = ['tokenizer.json', 'tokenizer_config.json', 'vocab.txt']; \
-found_tok = [t for t in tok_files if os.path.isfile(os.path.join(snapshot_dir, t))]; \
-assert len(found_tok) > 0, f'CRITICAL: No tokenizer configuration files ({tok_files}) found in snapshot {snapshot_dir}'; \
+tok_file = os.path.join(snapshot_dir, 'tokenizer.json'); \
+assert os.path.isfile(tok_file), f'CRITICAL: tokenizer.json missing at {tok_file}'; \
+onnx_file = os.path.join(snapshot_dir, 'onnx', 'model.onnx'); \
+if not os.path.isfile(onnx_file): onnx_file = os.path.join(snapshot_dir, 'model.onnx'); \
+assert os.path.isfile(onnx_file), f'CRITICAL: ONNX model missing at {onnx_file}'; \
 artifacts = sorted(os.listdir(snapshot_dir)); \
-print(f'[Docker Build] Verified snapshot artifact filenames ({len(artifacts)} files): {artifacts}'); \
-print('[Docker Build] SUCCESS: all-MiniLM-L6-v2 model snapshot is complete.')"
+print(f'[Docker Build] Verified ONNX snapshot artifacts ({len(artifacts)} files): {artifacts}'); \
+print('[Docker Build] SUCCESS: Pure ONNX all-MiniLM-L6-v2 model snapshot is complete.')"
 
 # Stage 2: Minimal Secure Runtime
 FROM python:3.12-slim AS runtime

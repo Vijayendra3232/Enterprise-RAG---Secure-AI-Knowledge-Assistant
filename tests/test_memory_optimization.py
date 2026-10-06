@@ -50,28 +50,26 @@ class TestMemoryOptimization(unittest.TestCase):
         self.assertEqual(config.EMBEDDING_BATCH_SIZE, 1)
 
     def test_lazy_embedding_model_cached_singleton(self):
-        """Verify repeated calls to load_embedding_model return the same cached model instance."""
+        """Verify repeated calls to load_embedding_model return the same cached PureONNXEmbeddings instance."""
         embeddings.load_embedding_model.cache_clear()
-        with patch("app.core.embeddings.HuggingFaceEmbeddings") as mock_hf:
+        with patch.object(embeddings, "PureONNXEmbeddings") as mock_onnx:
             mock_instance = MagicMock()
-            mock_hf.return_value = mock_instance
+            mock_onnx.return_value = mock_instance
 
             model1 = embeddings.load_embedding_model("all-MiniLM-L6-v2_unique_cache_test")
             model2 = embeddings.load_embedding_model("all-MiniLM-L6-v2_unique_cache_test")
 
             self.assertIs(model1, model2)
-            mock_hf.assert_called_once()
+            mock_onnx.assert_called_once()
         embeddings.load_embedding_model.cache_clear()
 
     def test_embedding_vector_dimension_is_384(self):
         """Verify embedding dimension calculation for MiniLM remains 384."""
         embeddings.load_embedding_model.cache_clear()
-        with patch("app.core.embeddings.HuggingFaceEmbeddings") as mock_hf:
+        with patch.object(embeddings, "PureONNXEmbeddings") as mock_onnx:
             mock_instance = MagicMock()
-            mock_client = MagicMock()
-            mock_client.get_sentence_embedding_dimension.return_value = 384
-            mock_instance.client = mock_client
-            mock_hf.return_value = mock_instance
+            mock_instance.get_sentence_embedding_dimension.return_value = 384
+            mock_onnx.return_value = mock_instance
 
             dim = embeddings.get_embedding_dimension("all-MiniLM-L6-v2")
             self.assertEqual(dim, 384)

@@ -25,37 +25,23 @@ class TestEmbeddingPrewarm(unittest.TestCase):
         embeddings.load_embedding_model.cache_clear()
 
     def test_load_embedding_model_offline_enforcement(self):
-        """Verify local_files_only is set when HF_HUB_OFFLINE is set to 1."""
+        """Verify RuntimeError is raised in offline mode if ONNX model files are missing."""
         embeddings.load_embedding_model.cache_clear()
-        with patch.dict(os.environ, {"HF_HUB_OFFLINE": "1"}), patch(
-            "langchain_huggingface.HuggingFaceEmbeddings"
-        ) as mock_hf, patch.object(embeddings, "HuggingFaceEmbeddings", new=mock_hf):
-            mock_instance = MagicMock()
-            mock_hf.return_value = mock_instance
-
-            model = embeddings.load_embedding_model("offline_test_model_1_unique")
-
-            mock_hf.assert_called_once()
-            _, kwargs = mock_hf.call_args
-            self.assertIn("model_kwargs", kwargs)
-            self.assertTrue(kwargs["model_kwargs"].get("local_files_only"))
+        with patch.dict(os.environ, {"HF_HUB_OFFLINE": "1"}), patch.object(
+            embeddings.PureONNXEmbeddings, "_resolve_artifacts", side_effect=RuntimeError("Missing artifacts")
+        ):
+            with self.assertRaises(RuntimeError):
+                embeddings.load_embedding_model("nonexistent_offline_model")
         embeddings.load_embedding_model.cache_clear()
 
     def test_load_embedding_model_production_enforcement(self):
-        """Verify local_files_only is set in production environment."""
+        """Verify RuntimeError is raised in production mode if ONNX model files are missing."""
         embeddings.load_embedding_model.cache_clear()
-        with patch.dict(os.environ, {"ENVIRONMENT": "production"}), patch(
-            "langchain_huggingface.HuggingFaceEmbeddings"
-        ) as mock_hf, patch.object(embeddings, "HuggingFaceEmbeddings", new=mock_hf):
-            mock_instance = MagicMock()
-            mock_hf.return_value = mock_instance
-
-            model = embeddings.load_embedding_model("prod_test_model_2_unique")
-
-            mock_hf.assert_called_once()
-            _, kwargs = mock_hf.call_args
-            self.assertIn("model_kwargs", kwargs)
-            self.assertTrue(kwargs["model_kwargs"].get("local_files_only"))
+        with patch.dict(os.environ, {"ENVIRONMENT": "production"}), patch.object(
+            embeddings.PureONNXEmbeddings, "_resolve_artifacts", side_effect=RuntimeError("Missing artifacts")
+        ):
+            with self.assertRaises(RuntimeError):
+                embeddings.load_embedding_model("nonexistent_prod_model")
         embeddings.load_embedding_model.cache_clear()
 
     def test_lifespan_prewarm_failure_in_production(self):
@@ -67,6 +53,8 @@ class TestEmbeddingPrewarm(unittest.TestCase):
         app = FastAPI()
         with patch.dict(os.environ, {"ENVIRONMENT": "production"}), patch.object(
             config, "PREWARM_EMBEDDING_MODEL", True
+        ), patch("app.main.init_db"), patch(
+            "app.storage.search.factory.get_search_store"
         ), patch.object(
             embeddings, "load_embedding_model", side_effect=RuntimeError("Model missing from cache")
         ):

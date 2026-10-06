@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
-from sentence_transformers import CrossEncoder
 from app import config
 from app.retrieval.models import SearchResult
+
+# Exposed for unittest mocking without importing sentence_transformers at module load
+CrossEncoder = None
 
 class RerankerInterface(ABC):
     """
@@ -23,12 +25,15 @@ class NoOpReranker(RerankerInterface):
 
 
 # Global cache to ensure model is only loaded once in the application context
-_CROSS_ENCODER_CACHE: Dict[str, CrossEncoder] = {}
+_CROSS_ENCODER_CACHE: Dict[str, Any] = {}
 
-def get_cross_encoder(model_name: str) -> CrossEncoder:
+def get_cross_encoder(model_name: str) -> Any:
     """Gets or loads a CrossEncoder model instance singleton."""
-    global _CROSS_ENCODER_CACHE
+    global _CROSS_ENCODER_CACHE, CrossEncoder
     if model_name not in _CROSS_ENCODER_CACHE:
+        if CrossEncoder is None:
+            from sentence_transformers import CrossEncoder as STCrossEncoder
+            CrossEncoder = STCrossEncoder
         print(f"[Reranker] Loading CrossEncoder model '{model_name}'...")
         # Load sentence-transformers CrossEncoder
         _CROSS_ENCODER_CACHE[model_name] = CrossEncoder(model_name)
@@ -44,7 +49,7 @@ class CrossEncoderReranker(RerankerInterface):
         self.enabled = enabled
         self._model = None
 
-    def _get_model(self) -> Optional[CrossEncoder]:
+    def _get_model(self) -> Optional[Any]:
         if not self.enabled:
             return None
         if self._model is None:
